@@ -8,6 +8,16 @@ Moss is the hot path. FluctlightDB is the durable handoff. They are not substitu
 
 Source: [github.com/voxmastery/RoomSearch](https://github.com/voxmastery/RoomSearch).
 
+## Latency
+
+The claim is warmed in-process `client.query` after `load_index`, not a cloud round trip. [Moss's published FAQ workload](https://www.moss.dev/benchmarks) is **p50 3.1 ms · p95 4.3 ms · p99 5.4 ms** (`top_k=5`, index loaded). RoomSearch measured the same call on the 12-note index on 2026-09-23:
+
+| | p50 | p95 | p99 | under 10 ms |
+| --- | ---: | ---: | ---: | ---: |
+| RoomSearch wall-clock, N=150, `top_k=5` | 4.01 ms | 5.63 ms | 5.86 ms | 100% |
+
+Full table, hardware, and how to rerun: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Public deploy
 
 The container in `Dockerfile` builds the Vite app and serves it from the same FastAPI process (`/api/*` plus the static UI). Render can run that image from this repo.

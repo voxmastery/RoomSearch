@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { ApiError, fetchStatus, handoff, searchRoom } from "./api"
+import { ArrowLeftRight, ArrowRight, Compass, Route, Search } from "lucide-react"
 import { Rail } from "./components/Rail"
+import { MossPulse, RoomIllustration } from "./components/RoomArt"
 import { Sources } from "./components/Sources"
 import { Trace } from "./components/Trace"
-import { IconArrow } from "./components/Icons"
 import { AGENTS, SUGGESTIONS, type AgentId, type Handoff, type MemorySnapshot, type MossMode, type SearchResponse, type StatusResponse } from "./types"
 
 const other = (id: AgentId): AgentId => (id === "agent-a" ? "agent-b" : "agent-a")
@@ -108,12 +109,13 @@ export default function App() {
 
   const searchForm = (variant: "hero" | "compact") => (
     <form
-      className={`search ${variant}`}
+      className={variant === "compact" ? "search compact" : "search"}
       onSubmit={(event) => {
         event.preventDefault()
         void runSearch(draft)
       }}
     >
+      <Search className="lead-icon" size={18} strokeWidth={1.75} aria-hidden="true" />
       <input
         ref={variant === "hero" || !idle ? inputRef : undefined}
         value={draft}
@@ -123,9 +125,8 @@ export default function App() {
         disabled={!searchable || phase === "running"}
         autoComplete="off"
       />
-      <span className="kbd">Enter</span>
       <button className="go" type="submit" aria-label="Search" disabled={!searchable || phase === "running" || draft.trim().length === 0}>
-        <IconArrow />
+        <ArrowRight size={18} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </form>
   )
@@ -151,7 +152,13 @@ export default function App() {
                   onClick={() => void switchAgent(item.id)}
                   aria-pressed={item.id === agentId}
                 >
-                  <span className="initial">{item.initial}</span>
+                  <span className="initial" aria-hidden="true">
+                    {item.id === "agent-a" ? (
+                      <Compass size={14} strokeWidth={1.75} />
+                    ) : (
+                      <Route size={14} strokeWidth={1.75} />
+                    )}
+                  </span>
                   <span className="who">
                     <strong>{item.name}</strong>
                     <em>{item.role}</em>
@@ -160,6 +167,7 @@ export default function App() {
               ))}
             </div>
             <button className="switch" type="button" onClick={() => void switchAgent(other(agentId))} disabled={handoffBusy || phase === "running"}>
+              <ArrowLeftRight size={14} strokeWidth={1.75} aria-hidden="true" />
               {handoffBusy ? "Activating…" : `Switch to ${next.name}`}
             </button>
             <ModeBadge mode={mode} ready={Boolean(status?.moss.ready)} offline={offline} />
@@ -171,6 +179,7 @@ export default function App() {
       {idle ? (
         <section className="hero">
           <Banner mode={mode} ready={Boolean(status?.moss.ready)} error={status?.moss.error ?? null} offline={offline} />
+          <RoomIllustration />
           <p className="eyebrow">Two agents, one room</p>
           <h2>Ask the shared room</h2>
           <p className="lede">Twelve shared notes. One Moss index. Two Fluctlight brains.</p>
@@ -207,7 +216,7 @@ export default function App() {
 
 function ModeBadge({ mode, ready, offline }: { mode: MossMode; ready: boolean; offline: boolean }) {
   if (offline) return <span className="mode">API offline</span>
-  if (mode === "live" && ready) return <span className="mode live"><i />Moss live</span>
+  if (mode === "live" && ready) return <span className="mode live"><MossPulse />Moss live</span>
   if (mode === "live") return <span className="mode wait"><i />Warming</span>
   if (mode === "mock") return <span className="mode mock"><i />Mock</span>
   return <span className="mode">Moss off</span>

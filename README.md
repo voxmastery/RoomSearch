@@ -82,6 +82,7 @@ Hosted URL: TBD.
 ```mermaid
 flowchart LR
   UI["RoomSearch UI"] -->|"POST /api/search"| API["FastAPI"]
+  UI -->|"POST /api/chat"| API
   UI -->|"POST /api/notes"| API
   UI -->|"POST /api/handoff"| API
   API -->|"add_docs + load_index"| Moss["Moss index roomsearch-notes"]
@@ -94,6 +95,8 @@ flowchart LR
 | --- | --- | --- |
 | Add note | `add_docs` with `MutationOptions(upsert=True)`, then `load_index` | Toast with the new doc count, then a search of the title |
 | Search | `MossClient.query("roomsearch-notes", query, QueryOptions(top_k=5, alpha=0.75))` | Source cards and `Moss · X.X ms` (`moss.latencyMs`) |
+| Chat | Same `client.query`, then a reply that names the source titles | Chat panel for the active agent, with `Moss · X.X ms` on that turn |
+| After chat | Fluctlight `experience` (`roomsearch://agent-a/chat`) | Episodes rail, carried on A→B handoff |
 | After search | Fluctlight `turn_begin`, `wm_push`, `experience` (`provenance_kind="tool_grounded"`), `turn_end`, `checkpoint` | Episodes rail, `roomsearch://agent-a/search` |
 | Switch A → B | `activate` on A, `experience` into B, `activate` on B | Activated rail, `fluctlight://agent-a/engram/…` |
 
@@ -115,7 +118,9 @@ The screen toasts the count, refreshes `GET /api/status`, and searches the title
 
 ## Agent chat
 
-**Message Agent A** (or B) posts to `POST /api/chat`. The handler runs the same Moss query as search, writes a grounded reply from the hits, and stores that turn with Fluctlight `experience`. The trace still shows **Moss · X.X ms** on a live query. **Switch to Agent B** is the existing handoff: `activate` on the source, write, `activate` on the destination.
+The empty screen has two actions under search: **Add a note** and **Ask the agent**. **Ask the agent** opens a panel for whoever is active, Agent A (Cartographer) or Agent B (Planner). Search stays on the page.
+
+`POST /api/chat` runs the same Moss `client.query` as search. The reply names the source titles from that query. The turn’s pill reads **Moss · X.X ms** when the keys are set. Each turn is a Fluctlight `experience` on that agent’s brain (`roomsearch://agent-a/chat`). **Switch to Agent B** still activates A’s episodes, including chat, and writes them onto B.
 
 ## Film
 

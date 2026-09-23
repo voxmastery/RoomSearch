@@ -18,11 +18,13 @@ export function Sources({
   index,
   composerOpen,
   onAdd,
+  onAsk,
 }: {
   hits: Hit[]
   index: string
   composerOpen: boolean
   onAdd: () => void
+  onAsk: () => void
 }) {
   const reduce = useReducedMotion()
   if (hits.length === 0) {
@@ -34,9 +36,14 @@ export function Sources({
         </div>
         <div className="empty-rail">
           <p>No note in the room index scored against that question.</p>
-          <button type="button" className="invite" aria-expanded={composerOpen} onClick={onAdd}>
-            Add a note to the room
-          </button>
+          <div className="hero-cta">
+            <button type="button" className="cta" aria-expanded={composerOpen} onClick={onAdd}>
+              Add a note
+            </button>
+            <button type="button" className="cta ask" onClick={onAsk}>
+              Ask the agent
+            </button>
+          </div>
         </div>
       </section>
     )

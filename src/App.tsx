@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { ApiError, chatRoom, fetchStatus, handoff, searchRoom } from "./api"
 import { ArrowLeftRight, ArrowRight, Compass, Route, Search } from "lucide-react"
 import { AddNote } from "./components/AddNote"
+import { ChatPanel, type ChatTurn } from "./components/ChatPanel"
 import { Rail } from "./components/Rail"
 import { MossPulse, RoomIllustration } from "./components/RoomArt"
 import { Sources } from "./components/Sources"
@@ -26,9 +27,14 @@ export default function App() {
   const [fresh, setFresh] = useState(false)
   const [runKey, setRunKey] = useState(0)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatBusy, setChatBusy] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+  const [turns, setTurns] = useState<ChatTurn[]>([])
   const [toast, setToast] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const toastTimer = useRef(0)
+  const turnSeq = useRef(0)
 
   useEffect(() => {
     let stop = false
@@ -81,8 +87,8 @@ export default function App() {
     typeof noteCount === "number"
       ? `${noteCount} ${noteCount === 1 ? "note" : "notes"} in the room. One Moss index. Two Fluctlight brains.`
       : "Shared notes. One Moss index. Two Fluctlight brains."
-  const composerBlocked = !searchable || phase === "running" || handoffBusy || offline
-  const composerReason = composerBlocked ? composerBlockReason(mode, Boolean(status?.moss.ready), offline, phase === "running" || handoffBusy) : null
+  const composerBlocked = !searchable || phase === "running" || handoffBusy || offline || chatBusy
+  const composerReason = composerBlocked ? composerBlockReason(mode, Boolean(status?.moss.ready), offline, phase === "running" || handoffBusy || chatBusy) : null
 
   function showToast(message: string) {
     setToast(message)
@@ -94,6 +100,13 @@ export default function App() {
     setComposerOpen(true)
     window.requestAnimationFrame(() => {
       document.getElementById("add-note")?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    })
+  }
+
+  function openChat() {
+    setChatOpen(true)
+    window.requestAnimationFrame(() => {
+      document.getElementById("ask-agent")?.scrollIntoView({ behavior: "smooth", block: "nearest" })
     })
   }
 
@@ -136,26 +149,39 @@ export default function App() {
 
   async function runChat(raw: string) {
     const message = raw.trim()
-    if (!message || phase === "running" || !searchable) return
-    setChatDraft(message)
-    setAsked(message)
-    setPhase("running")
-    setError(null)
-    setResult(null)
-    setRunKey((value) => value + 1)
+    if (!message || chatBusy || phase === "running" || !searchable) return
+    const speaker = agent
+    setChatBusy(true)
+    setChatError(null)
+    setChatDraft("")
     try {
-      const found = await chatRoom(message, agentId)
-      setResult(found)
+      const found = await chatRoom(message, speaker.id)
+      turnSeq.current += 1
+      setTurns((current) => [
+        ...current,
+        {
+          id: turnSeq.current,
+          agentId: speaker.id,
+          agentName: speaker.name,
+          agentRole: speaker.role,
+          message,
+          reply: found.reply ?? found.observation,
+          latencyMs: found.moss.latencyMs,
+          mode: found.moss.mode,
+          sources: found.hits.map((hit) => hit.title),
+        },
+      ])
       setMemory(found.memory)
-      setPhase("done")
     } catch (err) {
-      setPhase("error")
-      setError(err instanceof ApiError ? err.message : "The reply did not finish.")
+      setChatDraft(message)
+      setChatError(err instanceof ApiError ? err.message : "The reply did not finish.")
+    } finally {
+      setChatBusy(false)
     }
   }
 
   async function switchAgent(target: AgentId) {
-    if (target === agentId || handoffBusy || phase === "running") return
+    if (target === agentId || handoffBusy || phase === "running" || chatBusy) return
     setHandoffBusy(true)
     setError(null)
     try {
@@ -196,27 +222,32 @@ export default function App() {
     </form>
   )
 
-  const chatForm = (variant: "hero" | "compact") => (
-    <form
-      className={variant === "compact" ? "chat compact" : "chat"}
-      onSubmit={(event) => {
-        event.preventDefault()
-        void runChat(chatDraft)
-      }}
-    >
-      <input
-        value={chatDraft}
-        onChange={(event) => setChatDraft(event.target.value)}
-        placeholder={`Message ${agent.name}`}
-        aria-label={`Message ${agent.name}`}
-        disabled={!searchable || phase === "running"}
-        autoComplete="off"
-      />
-      <button type="submit" disabled={!searchable || phase === "running" || chatDraft.trim().length === 0}>
-        Send
+  const roomActions = (
+    <div className="hero-cta">
+      <button type="button" className="cta" aria-expanded={composerOpen} onClick={openComposer}>
+        Add a note
       </button>
-    </form>
+      <button type="button" className="cta ask" aria-expanded={chatOpen} onClick={openChat}>
+        Ask the agent
+      </button>
+    </div>
   )
+
+  const chatPanel = chatOpen ? (
+    <ChatPanel
+      agentName={agent.name}
+      agentRole={agent.role}
+      turns={turns}
+      draft={chatDraft}
+      busy={chatBusy}
+      blocked={composerBlocked}
+      blockedReason={composerReason}
+      error={chatError}
+      onDraft={setChatDraft}
+      onSend={(message) => void runChat(message)}
+      onClose={() => setChatOpen(false)}
+    />
+  ) : null
 
   return (
     <div className={`shell ${idle ? "is-idle" : "is-results"}`}>
@@ -253,19 +284,14 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button className="switch" type="button" onClick={() => void switchAgent(other(agentId))} disabled={handoffBusy || phase === "running"}>
+            <button className="switch" type="button" onClick={() => void switchAgent(other(agentId))} disabled={handoffBusy || phase === "running" || chatBusy}>
               <ArrowLeftRight size={14} strokeWidth={1.75} aria-hidden="true" />
               {handoffBusy ? "Activating…" : `Switch to ${next.name}`}
             </button>
             <ModeBadge mode={mode} ready={Boolean(status?.moss.ready)} offline={offline} />
           </div>
         </div>
-        {idle ? null : (
-          <div className="top-search">
-            {searchForm("compact")}
-            {chatForm("compact")}
-          </div>
-        )}
+        {idle ? null : <div className="top-search">{searchForm("compact")}</div>}
       </header>
 
       {idle ? (
@@ -276,7 +302,6 @@ export default function App() {
           <h2>Ask the shared room</h2>
           <p className="lede">{lede}</p>
           {searchForm("hero")}
-          {chatForm("hero")}
           <div className="suggest">
             {SUGGESTIONS.map((prompt) => (
               <button key={prompt} type="button" disabled={!searchable} onClick={() => void runSearch(prompt)}>
@@ -284,13 +309,11 @@ export default function App() {
               </button>
             ))}
           </div>
+          {roomActions}
           {composerOpen ? (
             <AddNote blocked={composerBlocked} blockedReason={composerReason} onAdded={onNoteAdded} onClose={() => setComposerOpen(false)} />
-          ) : (
-            <button type="button" className="invite" onClick={openComposer}>
-              Add a note to the room
-            </button>
-          )}
+          ) : null}
+          {chatPanel}
         </section>
       ) : (
         <main className="workspace">
@@ -300,21 +323,17 @@ export default function App() {
             <p className="asking">
               {agent.name} · {agent.role}
             </p>
-            {phase === "done" && result?.reply ? <p className="reply">{result.reply}</p> : null}
             {phase === "error" && error ? <div className="banner bad">{error}</div> : null}
             {phase === "running" || phase === "done" ? (
               <Trace key={runKey} phase={phase} mode={mode === "live" ? "live" : "mock"} agentName={agent.name} agentRole={agent.role} result={result} />
             ) : null}
+            {roomActions}
             {composerOpen ? (
               <AddNote blocked={composerBlocked} blockedReason={composerReason} onAdded={onNoteAdded} onClose={() => setComposerOpen(false)} />
             ) : null}
+            {chatPanel}
             {phase === "done" && result ? (
-              <Sources hits={result.hits} index={result.moss.index} composerOpen={composerOpen} onAdd={openComposer} />
-            ) : null}
-            {phase === "error" && !composerOpen ? (
-              <button type="button" className="invite" onClick={openComposer}>
-                Add a note to the room
-              </button>
+              <Sources hits={result.hits} index={result.moss.index} composerOpen={composerOpen} onAdd={openComposer} onAsk={openChat} />
             ) : null}
             {phase !== "error" && error ? <div className="banner bad">{error}</div> : null}
           </div>

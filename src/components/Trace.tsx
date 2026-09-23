@@ -99,3 +99,76 @@ export function Trace({ phase, mode, agentName, agentRole, result }: TraceProps)
     </section>
   )
 }
+
+function Step({
+  n,
+  id,
+  title,
+  className,
+  open,
+  onToggle,
+  done,
+  waiting,
+  pill,
+  pillTone,
+  pending,
+  children,
+}: {
+  n: number
+  id: string
+  title: string
+  className?: string
+  open: boolean
+  onToggle: () => void
+  done?: boolean
+  waiting?: boolean
+  pill?: string | null
+  pillTone?: "moss" | "mock"
+  pending?: boolean
+  children: ReactNode
+}) {
+  const reduce = useReducedMotion()
+  return (
+    <article className={`step ${className ?? ""} ${done && !waiting ? "done" : ""}`.trim()}>
+      <span className="num" aria-hidden="true">{n}</span>
+      <div className="step-main">
+        <button className="step-h" type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={onToggle}>
+          <span className="step-title">{title}</span>
+          <span className="step-aside">
+            {pill ? (
+              <motion.span
+                className={`pill ${pillTone ?? "moss"} ${pending ? "pending" : ""}`}
+                animate={pending && !reduce ? { opacity: [1, 0.45, 1] } : { opacity: 1 }}
+                transition={pending && !reduce ? { duration: 1.15, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
+              >
+                {pill}
+              </motion.span>
+            ) : null}
+            <motion.span
+              className="chev-wrap"
+              aria-hidden="true"
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={{ duration: reduce ? 0 : 0.18 }}
+            >
+              <ChevronDown size={16} strokeWidth={1.75} />
+            </motion.span>
+          </span>
+        </button>
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              className="step-body"
+              id={`${id}-body`}
+              initial={reduce ? false : { height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={reduce ? undefined : { height: 0, opacity: 0 }}
+              transition={{ duration: reduce ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="step-body-inner">{children}</div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </article>
+  )
+}

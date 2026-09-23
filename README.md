@@ -34,7 +34,7 @@ flowchart LR
 
 | Path | System | What the screen shows |
 | --- | --- | --- |
-| Every search | Moss `client.query` | Source cards and `Moss X.X ms` |
+| Every search | Moss `client.query` | Source cards and `Moss · X.X ms` |
 | After each search | Fluctlight `experience` / `wm_push` / `checkpoint` | Episodes rail, with agent and source URI |
 | Switch A → B | Fluctlight `activate` on A, write into B, `activate` on B | Activated rail, provenance `fluctlight://agent-a/engram/…` |
 
@@ -114,7 +114,9 @@ Film the **Moss query** row. The green pill is the number to hold on. It only re
 
 ## Screenshot
 
-The frames below were captured with `DEMO_MOCK_MOSS=1`, so the pill says **Mock**. With `MOSS_PROJECT_ID` and `MOSS_PROJECT_KEY` set, that same row reads **Moss** and the header badge says Moss live.
+The frames below are the light UI. With `MOSS_PROJECT_ID` and `MOSS_PROJECT_KEY` set, the header reads **Moss live** and the timeline pill reads **Moss · X.X ms**. `DEMO_MOCK_MOSS=1` uses the same layout and labels the pill **Mock**. Shot list: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+
+![Empty room, centered search](docs/screenshots/empty.png)
 
 ![Lisbon search, latency pill, and source cards](docs/screenshots/search.png)
 

@@ -1,3 +1,5 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { ChevronDown } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import type { MossMode, SearchResponse } from "../types"
 
@@ -51,7 +53,7 @@ export function Trace({ phase, mode, agentName, agentRole, result }: TraceProps)
         n={2}
         id="search"
         title={searchTitle}
-        className={live ? "search" : "mock"}
+        className={live ? "tone-moss" : "tone-mock"}
         open={Boolean(open.search)}
         onToggle={() => toggle("search")}
         done={phase === "done"}
@@ -95,53 +97,5 @@ export function Trace({ phase, mode, agentName, agentRole, result }: TraceProps)
         {phase === "done" && result ? result.observation : "Waiting on the retrieval step."}
       </Step>
     </section>
-  )
-}
-
-function Step({
-  n,
-  id,
-  title,
-  className,
-  open,
-  onToggle,
-  done,
-  waiting,
-  pill,
-  pillTone,
-  pending,
-  children,
-}: {
-  n: number
-  id: string
-  title: string
-  className?: string
-  open: boolean
-  onToggle: () => void
-  done?: boolean
-  waiting?: boolean
-  pill?: string | null
-  pillTone?: "moss" | "mock"
-  pending?: boolean
-  children: ReactNode
-}) {
-  return (
-    <article className={`step ${className ?? ""} ${done && !waiting ? "done" : ""}`.trim()}>
-      <span className="num" aria-hidden="true">{n}</span>
-      <div className="step-main">
-        <button className="step-h" type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={onToggle}>
-          <span className="step-title">{title}</span>
-          <span className="step-aside">
-            {pill ? <span className={`pill ${pillTone ?? "moss"} ${pending ? "pending" : ""}`}>{pill}</span> : null}
-            <span className={`chevron ${open ? "open" : ""}`} aria-hidden="true" />
-          </span>
-        </button>
-        {open ? (
-          <div className="step-body" id={`${id}-body`}>
-            {children}
-          </div>
-        ) : null}
-      </div>
-    </article>
   )
 }

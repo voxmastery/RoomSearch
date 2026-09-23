@@ -1,4 +1,4 @@
-import type { AgentId, HandoffResponse, SearchResponse, StatusResponse } from "./types"
+import type { AgentId, HandoffResponse, NoteResponse, SearchResponse, StatusResponse } from "./types"
 
 export class ApiError extends Error {
   code: string
@@ -29,6 +29,22 @@ export function searchRoom(query: string, agentId: AgentId): Promise<SearchRespo
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, agentId }),
   }).then((response) => read<SearchResponse>(response))
+}
+
+export function chatRoom(message: string, agentId: AgentId): Promise<SearchResponse> {
+  return fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, agentId }),
+  }).then((response) => read<SearchResponse>(response))
+}
+
+export function addNote(note: { title: string; text: string; topic: string }): Promise<NoteResponse> {
+  return fetch("/api/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(note),
+  }).then((response) => read<NoteResponse>(response))
 }
 
 export function handoff(from: AgentId, to: AgentId): Promise<HandoffResponse> {

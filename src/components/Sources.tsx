@@ -13,7 +13,19 @@ const TOPIC_INK: Record<string, string> = {
   Sprint: "#7A4632",
 }
 
-export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
+export function Sources({
+  hits,
+  index,
+  composerOpen,
+  onAdd,
+  onAsk,
+}: {
+  hits: Hit[]
+  index: string
+  composerOpen: boolean
+  onAdd: () => void
+  onAsk: () => void
+}) {
   const reduce = useReducedMotion()
   if (hits.length === 0) {
     return (
@@ -22,7 +34,17 @@ export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
           <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
           <h2 className="kicker">Sources</h2>
         </div>
-        <div className="empty-rail">No note in the room index scored against that question.</div>
+        <div className="empty-rail">
+          <p>No note in the room index scored against that question.</p>
+          <div className="hero-cta">
+            <button type="button" className="cta" aria-expanded={composerOpen} onClick={onAdd}>
+              Add a note
+            </button>
+            <button type="button" className="cta ask" onClick={onAsk}>
+              Ask the agent
+            </button>
+          </div>
+        </div>
       </section>
     )
   }
@@ -32,6 +54,9 @@ export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
       <div className="kicker-row">
         <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
         <h2 className="kicker">Sources</h2>
+        <button type="button" className="kicker-action" aria-expanded={composerOpen} onClick={onAdd}>
+          Add a note to the room
+        </button>
       </div>
       <div className="grid">
         {hits.map((hit, indexInList) => {

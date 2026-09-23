@@ -1,6 +1,8 @@
 """RoomSearch API.
 
 POST /api/search     — Moss query (or labeled mock) + Fluctlight experience
+POST /api/chat       — Moss retrieve, agent reply, Fluctlight experience
+POST /api/notes      — append a note to the same Moss index
 POST /api/handoff    — Fluctlight activate on the source, write, activate on the destination
 GET  /api/status     — Moss mode and both brains
 """
@@ -19,7 +21,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from server.memory import AGENTS, MemoryStore
+from server.notes import NoteError, prepare_note
 from server.retrieve import RetrieveError, Retriever
+from server.seed import INDEX_NAME
 
 load_dotenv()
 
@@ -38,11 +42,36 @@ class SearchBody(BaseModel):
     agentId: str
 
 
+class ChatBody(BaseModel):
+    message: str = Field(min_length=1, max_length=400)
+    agentId: str
+
+
 class HandoffBody(BaseModel):
     from_agent: str = Field(alias="from")
     to: str
 
     model_config = {"populate_by_name": True}
+
+
+class NoteBody(BaseModel):
+    title: str = Field(default="", max_length=200)
+    text: str = Field(default="", max_length=12_000)
+    topic: str = Field(default="", max_length=100)
+    tags: str = Field(default="", max_length=100)
+
+
+def _reply(agent_id: str, hits: list[dict]) -> str:
+    agent = AGENTS[agent_id]
+    who = f"{agent['name']} ({agent['role']})"
+    if not hits:
+        return f"{who}: Nothing in the room index matched that."
+    lead = hits[0]
+    text = f"{who}: {lead['title']}. {lead['snippet']}"
+    also = [hit["title"] for hit in hits[1:3]]
+    if also:
+        text += f" Also in range: {', '.join(also)}."
+    return text
 
 
 def _observation(hits: list[dict]) -> str:
@@ -120,15 +149,53 @@ async def search(body: SearchBody, request: Request) -> dict:
     found = await retriever.search(body.query)
     lead = found.hits[0].title if found.hits else ""
     episode = memory.record_search(body.agentId, found.query, lead, found.mode)
+    return _found_payload(found, body.agentId, memory, reply=None, episode=episode)
+
+
+def _found_payload(found, agent_id: str, memory: MemoryStore, *, reply: str | None, episode: dict) -> dict:
     payload = found.as_dict()
-    return {
+    body = {
         "query": found.query,
-        "agentId": body.agentId,
+        "agentId": agent_id,
         "moss": {key: payload[key] for key in payload if key != "hits"},
         "hits": payload["hits"],
-        "observation": _observation(payload["hits"]),
+        "observation": reply if reply is not None else _observation(payload["hits"]),
         "episode": episode,
         "memory": memory.snapshot(),
+    }
+    if reply is not None:
+        body["reply"] = reply
+        body["message"] = found.query
+    return body
+
+
+@app.post("/api/chat")
+async def chat(body: ChatBody, request: Request) -> dict:
+    _check_agent(body.agentId)
+    retriever: Retriever = request.app.state.retriever
+    memory: MemoryStore = request.app.state.memory
+    found = await retriever.search(body.message)
+    reply = _reply(body.agentId, found.as_dict()["hits"])
+    episode = memory.record_chat(body.agentId, found.query, reply, found.mode)
+    return _found_payload(found, body.agentId, memory, reply=reply, episode=episode)
+
+
+@app.post("/api/notes")
+async def create_note(body: NoteBody, request: Request) -> dict:
+    topic = body.topic.strip() or body.tags.strip()
+    try:
+        doc = prepare_note(body.title, body.text, topic)
+    except NoteError as exc:
+        raise RetrieveError(exc.code, exc.message, 400) from exc
+    retriever: Retriever = request.app.state.retriever
+    count = await retriever.add_note(doc)
+    return {
+        "id": doc["id"],
+        "title": doc["title"],
+        "topic": doc["topic"],
+        "docCount": count,
+        "index": INDEX_NAME,
+        "mode": retriever.mode,
     }
 
 

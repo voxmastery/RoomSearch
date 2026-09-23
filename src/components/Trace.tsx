@@ -65,7 +65,7 @@ export function Trace({ phase, mode, agentName, agentRole, result }: TraceProps)
         {phase === "running" || !result ? (
           live
             ? "Calling Moss client.query and measuring wall-clock around that call."
-            : "Running keyword overlap on the seed notes. This is not a Moss query."
+            : "Running keyword overlap on the room notes. This is not a Moss query."
         ) : (
           <dl className="metrics">
             <dt>call</dt>

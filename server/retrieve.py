@@ -3,16 +3,20 @@
 Moss `client.query` when project keys are set.
 Keyword overlap only when `DEMO_MOCK_MOSS=1` and keys are missing.
 The mock path never reports itself as Moss.
+
+User notes append to the same index as the twelve seed documents.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from server.notes import indexed_text
 from server.seed import INDEX_NAME, SEED_DOCS
 
 TOP_K = 5
@@ -128,8 +132,33 @@ def rank_seed(query: str, docs: list[dict[str, str]] | None = None, top_k: int =
     return hits
 
 
-def _seed_by_id() -> dict[str, dict[str, str]]:
-    return {doc["id"]: doc for doc in SEED_DOCS}
+def _document(doc: dict[str, str]) -> Any:
+    from moss import DocumentInfo
+
+    return DocumentInfo(
+        id=doc["id"],
+        text=indexed_text(doc["title"], doc["text"]),
+        metadata={
+            "title": doc["title"],
+            "topic": doc["topic"],
+            "mark": doc["mark"],
+        },
+    )
+
+
+_SEED_IDS = {doc["id"] for doc in SEED_DOCS}
+
+
+def _public_failure(exc: Exception, *, fallback: str) -> str:
+    """Surface a Moss error without echoing project credentials."""
+    message = " ".join(str(exc).split())
+    for env_name in ("MOSS_PROJECT_KEY", "MOSS_PROJECT_ID"):
+        secret = os.getenv(env_name, "").strip()
+        if len(secret) >= 4 and secret in message:
+            message = message.replace(secret, "[redacted]")
+    if not message or message == "[redacted]":
+        message = fallback
+    return message[:240]
 
 
 @dataclass
@@ -139,6 +168,8 @@ class Retriever:
     error: str | None = None
     doc_count: int = len(SEED_DOCS)
     _client: Any = field(default=None, repr=False)
+    _extra: list[dict[str, str]] = field(default_factory=list, repr=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     async def start(self) -> None:
         project_id = os.getenv("MOSS_PROJECT_ID", "").strip()
@@ -151,7 +182,7 @@ class Retriever:
                 self.error = None
             except Exception as exc:  # noqa: BLE001 — surface the SDK error to the UI
                 self.ready = False
-                self.error = str(exc)
+                self.error = _public_failure(exc, fallback="The Moss index did not finish loading.")
             return
         if os.getenv("DEMO_MOCK_MOSS", "").strip() == "1":
             self.mode = "mock"
@@ -175,29 +206,17 @@ class Retriever:
             await result
 
     async def _boot_live(self, project_id: str, project_key: str) -> None:
-        from moss import DocumentInfo, MossClient, MutationOptions
+        from moss import MossClient, MutationOptions
 
         client = MossClient(project_id, project_key)
         self._client = client
-        documents = [
-            DocumentInfo(
-                id=doc["id"],
-                text=f"{doc['title']}. {doc['text']}",
-                metadata={
-                    "title": doc["title"],
-                    "topic": doc["topic"],
-                    "mark": doc["mark"],
-                },
-            )
-            for doc in SEED_DOCS
-        ]
+        documents = [_document(doc) for doc in SEED_DOCS]
         names = {info.name for info in await client.list_indexes()}
         if INDEX_NAME in names:
             await client.add_docs(INDEX_NAME, documents, MutationOptions(upsert=True))
         else:
             await client.create_index(INDEX_NAME, documents, "moss-minilm")
-        cache = os.getenv("MOSS_CACHE_PATH", "").strip() or None
-        await client.load_index(INDEX_NAME, cache_path=cache)
+        await self._load()
         # Warm the in-process query path so the filmed search is not the cold embed.
         await client.query(INDEX_NAME, "lisbon dinner", _query_options())
         info = await client.get_index(INDEX_NAME)
@@ -205,26 +224,83 @@ class Retriever:
         if isinstance(count, int) and count > 0:
             self.doc_count = count
 
+    async def add_note(self, doc: dict[str, str]) -> int:
+        """Append one note. Live mode upserts the loaded Moss index; mock keeps it in memory."""
+        if doc["id"] in _SEED_IDS or not str(doc["id"]).startswith("user-"):
+            raise RetrieveError(
+                "reserved_id",
+                "Seeded notes stay as they are. New notes get their own ids.",
+                400,
+            )
+        async with self._lock:
+            if self.mode == "live":
+                if not self.ready or self._client is None:
+                    detail = self.error or "The Moss index is still warming."
+                    raise RetrieveError("moss_not_ready", detail, 503)
+                return await self._upsert_live(doc)
+            if self.mode == "mock":
+                self._extra.append(doc)
+                self.doc_count = len(SEED_DOCS) + len(self._extra)
+                return self.doc_count
+            raise RetrieveError(
+                "moss_unconfigured",
+                "Set MOSS_PROJECT_ID and MOSS_PROJECT_KEY. Notes stay off until Moss is configured.",
+                503,
+            )
+
     async def search(self, query: str) -> RetrieveResult:
         text = query.strip()
         if not text:
             raise RetrieveError("empty_query", "Enter a question for the room.", 400)
-        if self.mode == "live":
-            if not self.ready or self._client is None:
-                detail = self.error or "The Moss index is still warming."
-                raise RetrieveError("moss_not_ready", detail, 503)
-            return await self._live_query(text)
-        if self.mode == "mock":
-            return self._mock_query(text)
-        raise RetrieveError(
-            "moss_unconfigured",
-            "Set MOSS_PROJECT_ID and MOSS_PROJECT_KEY. Searches stay off until Moss is configured.",
-            503,
-        )
+        async with self._lock:
+            if self.mode == "live":
+                if not self.ready or self._client is None:
+                    detail = self.error or "The Moss index is still warming."
+                    raise RetrieveError("moss_not_ready", detail, 503)
+                return await self._live_query(text)
+            if self.mode == "mock":
+                return self._mock_query(text)
+            raise RetrieveError(
+                "moss_unconfigured",
+                "Set MOSS_PROJECT_ID and MOSS_PROJECT_KEY. Searches stay off until Moss is configured.",
+                503,
+            )
+
+    def _corpus(self) -> list[dict[str, str]]:
+        return [*SEED_DOCS, *self._extra]
+
+    async def _load(self) -> None:
+        cache = os.getenv("MOSS_CACHE_PATH", "").strip() or None
+        await self._client.load_index(INDEX_NAME, cache_path=cache)
+
+    async def _upsert_live(self, doc: dict[str, str]) -> int:
+        from moss import MutationOptions
+
+        previous = self.doc_count
+        try:
+            await self._client.add_docs(INDEX_NAME, [_document(doc)], MutationOptions(upsert=True))
+            await self._load()
+        except Exception as exc:  # noqa: BLE001 — the SDK message is shown, credentials stripped
+            raise RetrieveError(
+                "moss_add_failed",
+                _public_failure(exc, fallback="Moss could not add that note to the room index."),
+                502,
+            ) from exc
+        self._extra.append(doc)
+        floor = previous + 1
+        self.doc_count = floor
+        try:
+            info = await self._client.get_index(INDEX_NAME)
+        except Exception:  # noqa: BLE001 — count refresh must not fail a note that already landed
+            return self.doc_count
+        info_count = getattr(info, "doc_count", None)
+        if isinstance(info_count, int) and info_count >= floor:
+            self.doc_count = info_count
+        return self.doc_count
 
     def _mock_query(self, query: str) -> RetrieveResult:
         started = time.perf_counter()
-        hits = rank_seed(query)
+        hits = rank_seed(query, self._corpus())
         latency_ms = (time.perf_counter() - started) * 1000
         return RetrieveResult(
             mode="mock",
@@ -235,8 +311,8 @@ class Retriever:
             top_k=TOP_K,
             alpha=ALPHA,
             hits=hits,
-            doc_count=len(SEED_DOCS),
-            call="keyword overlap over seed notes — not MossClient.query",
+            doc_count=self.doc_count,
+            call="keyword overlap over room notes — not MossClient.query",
         )
 
     async def _live_query(self, query: str) -> RetrieveResult:
@@ -245,7 +321,7 @@ class Retriever:
         latency_ms = (time.perf_counter() - started) * 1000
         engine = getattr(result, "time_taken_ms", None)
         engine_ms = int(engine) if isinstance(engine, (int, float)) else None
-        catalog = _seed_by_id()
+        catalog = {doc["id"]: doc for doc in self._corpus()}
         hits: list[Hit] = []
         for doc in result.docs:
             meta = dict(getattr(doc, "metadata", None) or {})

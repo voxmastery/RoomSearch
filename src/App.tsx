@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react"
-import { ApiError, fetchStatus, handoff, searchRoom } from "./api"
+import { ApiError, chatRoom, fetchStatus, handoff, searchRoom } from "./api"
 import { ArrowLeftRight, ArrowRight, Compass, Route, Search } from "lucide-react"
+import { AddNote } from "./components/AddNote"
 import { Rail } from "./components/Rail"
 import { MossPulse, RoomIllustration } from "./components/RoomArt"
 import { Sources } from "./components/Sources"
 import { Trace } from "./components/Trace"
-import { AGENTS, SUGGESTIONS, type AgentId, type Handoff, type MemorySnapshot, type MossMode, type SearchResponse, type StatusResponse } from "./types"
+import { AGENTS, SUGGESTIONS, type AgentId, type Handoff, type MemorySnapshot, type MossMode, type NoteResponse, type SearchResponse, type StatusResponse } from "./types"
 
 const other = (id: AgentId): AgentId => (id === "agent-a" ? "agent-b" : "agent-a")
 
@@ -14,6 +15,7 @@ export default function App() {
   const [offline, setOffline] = useState(false)
   const [agentId, setAgentId] = useState<AgentId>("agent-a")
   const [draft, setDraft] = useState("")
+  const [chatDraft, setChatDraft] = useState("")
   const [asked, setAsked] = useState("")
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle")
   const [result, setResult] = useState<SearchResponse | null>(null)
@@ -23,7 +25,10 @@ export default function App() {
   const [handoffBusy, setHandoffBusy] = useState(false)
   const [fresh, setFresh] = useState(false)
   const [runKey, setRunKey] = useState(0)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const toastTimer = useRef(0)
 
   useEffect(() => {
     let stop = false
@@ -52,9 +57,12 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
+      const tag = document.activeElement?.tagName
+      if (event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA") {
         event.preventDefault()
         inputRef.current?.focus()
       }
@@ -68,6 +76,43 @@ export default function App() {
   const agent = AGENTS[agentId]
   const next = AGENTS[other(agentId)]
   const idle = phase === "idle"
+  const noteCount = status?.moss.docCount
+  const lede =
+    typeof noteCount === "number"
+      ? `${noteCount} ${noteCount === 1 ? "note" : "notes"} in the room. One Moss index. Two Fluctlight brains.`
+      : "Shared notes. One Moss index. Two Fluctlight brains."
+  const composerBlocked = !searchable || phase === "running" || handoffBusy || offline
+  const composerReason = composerBlocked ? composerBlockReason(mode, Boolean(status?.moss.ready), offline, phase === "running" || handoffBusy) : null
+
+  function showToast(message: string) {
+    setToast(message)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 4200)
+  }
+
+  function openComposer() {
+    setComposerOpen(true)
+    window.requestAnimationFrame(() => {
+      document.getElementById("add-note")?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    })
+  }
+
+  async function onNoteAdded(note: NoteResponse) {
+    setComposerOpen(false)
+    showToast(`Added “${note.title}” · ${note.docCount} notes in the room`)
+    try {
+      const nextStatus = await fetchStatus()
+      setOffline(false)
+      setStatus(nextStatus)
+      setMemory((current) => current ?? nextStatus.memory)
+      setLastHandoff((current) => current ?? nextStatus.memory.lastHandoff)
+    } catch {
+      setStatus((current) =>
+        current ? { ...current, moss: { ...current.moss, docCount: note.docCount } } : current,
+      )
+    }
+    await runSearch(note.title)
+  }
 
   async function runSearch(raw: string) {
     const query = raw.trim()
@@ -86,6 +131,26 @@ export default function App() {
     } catch (err) {
       setPhase("error")
       setError(err instanceof ApiError ? err.message : "The search did not finish.")
+    }
+  }
+
+  async function runChat(raw: string) {
+    const message = raw.trim()
+    if (!message || phase === "running" || !searchable) return
+    setChatDraft(message)
+    setAsked(message)
+    setPhase("running")
+    setError(null)
+    setResult(null)
+    setRunKey((value) => value + 1)
+    try {
+      const found = await chatRoom(message, agentId)
+      setResult(found)
+      setMemory(found.memory)
+      setPhase("done")
+    } catch (err) {
+      setPhase("error")
+      setError(err instanceof ApiError ? err.message : "The reply did not finish.")
     }
   }
 
@@ -127,6 +192,28 @@ export default function App() {
       />
       <button className="go" type="submit" aria-label="Search" disabled={!searchable || phase === "running" || draft.trim().length === 0}>
         <ArrowRight size={18} strokeWidth={1.75} aria-hidden="true" />
+      </button>
+    </form>
+  )
+
+  const chatForm = (variant: "hero" | "compact") => (
+    <form
+      className={variant === "compact" ? "chat compact" : "chat"}
+      onSubmit={(event) => {
+        event.preventDefault()
+        void runChat(chatDraft)
+      }}
+    >
+      <input
+        value={chatDraft}
+        onChange={(event) => setChatDraft(event.target.value)}
+        placeholder={`Message ${agent.name}`}
+        aria-label={`Message ${agent.name}`}
+        disabled={!searchable || phase === "running"}
+        autoComplete="off"
+      />
+      <button type="submit" disabled={!searchable || phase === "running" || chatDraft.trim().length === 0}>
+        Send
       </button>
     </form>
   )
@@ -173,7 +260,12 @@ export default function App() {
             <ModeBadge mode={mode} ready={Boolean(status?.moss.ready)} offline={offline} />
           </div>
         </div>
-        {idle ? null : <div className="top-search">{searchForm("compact")}</div>}
+        {idle ? null : (
+          <div className="top-search">
+            {searchForm("compact")}
+            {chatForm("compact")}
+          </div>
+        )}
       </header>
 
       {idle ? (
@@ -182,8 +274,9 @@ export default function App() {
           <RoomIllustration />
           <p className="eyebrow">Two agents, one room</p>
           <h2>Ask the shared room</h2>
-          <p className="lede">Twelve shared notes. One Moss index. Two Fluctlight brains.</p>
+          <p className="lede">{lede}</p>
           {searchForm("hero")}
+          {chatForm("hero")}
           <div className="suggest">
             {SUGGESTIONS.map((prompt) => (
               <button key={prompt} type="button" disabled={!searchable} onClick={() => void runSearch(prompt)}>
@@ -191,6 +284,13 @@ export default function App() {
               </button>
             ))}
           </div>
+          {composerOpen ? (
+            <AddNote blocked={composerBlocked} blockedReason={composerReason} onAdded={onNoteAdded} onClose={() => setComposerOpen(false)} />
+          ) : (
+            <button type="button" className="invite" onClick={openComposer}>
+              Add a note to the room
+            </button>
+          )}
         </section>
       ) : (
         <main className="workspace">
@@ -200,18 +300,42 @@ export default function App() {
             <p className="asking">
               {agent.name} · {agent.role}
             </p>
+            {phase === "done" && result?.reply ? <p className="reply">{result.reply}</p> : null}
             {phase === "error" && error ? <div className="banner bad">{error}</div> : null}
             {phase === "running" || phase === "done" ? (
               <Trace key={runKey} phase={phase} mode={mode === "live" ? "live" : "mock"} agentName={agent.name} agentRole={agent.role} result={result} />
             ) : null}
-            {phase === "done" && result ? <Sources hits={result.hits} index={result.moss.index} /> : null}
+            {composerOpen ? (
+              <AddNote blocked={composerBlocked} blockedReason={composerReason} onAdded={onNoteAdded} onClose={() => setComposerOpen(false)} />
+            ) : null}
+            {phase === "done" && result ? (
+              <Sources hits={result.hits} index={result.moss.index} composerOpen={composerOpen} onAdd={openComposer} />
+            ) : null}
+            {phase === "error" && !composerOpen ? (
+              <button type="button" className="invite" onClick={openComposer}>
+                Add a note to the room
+              </button>
+            ) : null}
             {phase !== "error" && error ? <div className="banner bad">{error}</div> : null}
           </div>
           <Rail memory={memory} handoff={lastHandoff} fresh={fresh} />
         </main>
       )}
+      {toast ? (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      ) : null}
     </div>
   )
+}
+
+function composerBlockReason(mode: MossMode, ready: boolean, offline: boolean, turnBusy: boolean): string {
+  if (offline) return "The API is offline."
+  if (mode === "unconfigured") return "Set Moss keys before adding a note."
+  if (mode === "live" && !ready) return "Wait for the Moss index to finish warming."
+  if (turnBusy) return "Wait for the current turn to finish."
+  return "Notes stay off until Moss is ready."
 }
 
 function ModeBadge({ mode, ready, offline }: { mode: MossMode; ready: boolean; offline: boolean }) {
@@ -233,7 +357,7 @@ function Banner({ mode, ready, error, offline }: { mode: MossMode; ready: boolea
   if (mode === "mock") {
     return (
       <div className="banner mock">
-        <strong>Dev mock retrieval.</strong> Hits are keyword overlap over the seed notes, not Moss. Unset DEMO_MOCK_MOSS and add portal keys to film a real query.
+        <strong>Dev mock retrieval.</strong> Hits are keyword overlap over the room notes, not Moss. Unset DEMO_MOCK_MOSS and add portal keys to film a real query.
       </div>
     )
   }

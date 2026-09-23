@@ -8,7 +8,7 @@ Repo: [github.com/voxmastery/RoomSearch](https://github.com/voxmastery/RoomSearc
 
 | | |
 | --- | --- |
-| What | One screen, two agents, twelve shared notes |
+| What | One screen, two agents, a shared room you can add to |
 | Moss | Every search calls `client.query`. The pill is that latency |
 | FluctlightDB | Episode written on the asking agent, then A→B handoff |
 | Speed | p50 4.01 ms · p95 5.63 ms · p99 5.86 ms on the warmed index |
@@ -82,21 +82,40 @@ Hosted URL: TBD.
 ```mermaid
 flowchart LR
   UI["RoomSearch UI"] -->|"POST /api/search"| API["FastAPI"]
+  UI -->|"POST /api/notes"| API
   UI -->|"POST /api/handoff"| API
-  API -->|"client.query + wall-clock ms"| Moss["Moss index roomsearch-notes"]
+  API -->|"add_docs + load_index"| Moss["Moss index roomsearch-notes"]
+  API -->|"client.query + wall-clock ms"| Moss
   API -->|"experience + checkpoint"| A["Fluctlight brain agent-a"]
   API -->|"activate, then experience, then activate"| B["Fluctlight brain agent-b"]
 ```
 
 | Path | Call | On screen |
 | --- | --- | --- |
+| Add note | `add_docs` with `MutationOptions(upsert=True)`, then `load_index` | Toast with the new doc count, then a search of the title |
 | Search | `MossClient.query("roomsearch-notes", query, QueryOptions(top_k=5, alpha=0.75))` | Source cards and `Moss · X.X ms` (`moss.latencyMs`) |
 | After search | Fluctlight `turn_begin`, `wm_push`, `experience` (`provenance_kind="tool_grounded"`), `turn_end`, `checkpoint` | Episodes rail, `roomsearch://agent-a/search` |
 | Switch A → B | `activate` on A, `experience` into B, `activate` on B | Activated rail, `fluctlight://agent-a/engram/…` |
 
 The Python API holds both SDKs. The project key never reaches the browser. UI stack: Vite, React, TypeScript.
 
-Seed notes are a field week for an open-source trip atlas (Lisbon dinner, Kyoto rail, tile cache, hike weather). Twelve documents in `server/seed.py`. B’s next search still calls Moss.
+Seed notes are a field week for an open-source trip atlas (Lisbon dinner, Kyoto rail, tile cache, hike weather). Twelve documents in `server/seed.py`. Notes you add append to that same index. B’s next search still calls Moss.
+
+## Add a note
+
+**Add a note to the room** opens a panel on the empty screen, and again when a search has no hit. Title and body, a pasted note (the first line becomes the title), an optional category, or a `.txt` / `.md` file. PDF files are not accepted.
+
+Submit **Add to room**. That is `POST /api/notes`. The API validates the text, mints an id that cannot replace a seed document, and upserts into `roomsearch-notes` the same way boot does (`add_docs` + `load_index`). The response is the doc id and the new count. The project key stays on the server. Note text and credentials are not logged.
+
+```json
+{ "title": "Porto bakery stop", "text": "Manteigaria for pastel de nata.", "topic": "Food" }
+```
+
+The screen toasts the count, refreshes `GET /api/status`, and searches the title. With live keys the pill reads **Moss · X.X ms** for that query. The twelve seed notes stay in the index. In the labeled mock (`DEMO_MOCK_MOSS=1`, no keys) the new note is searchable for the life of the process and the pill says **Mock**.
+
+## Agent chat
+
+**Message Agent A** (or B) posts to `POST /api/chat`. The handler runs the same Moss query as search, writes a grounded reply from the hits, and stores that turn with Fluctlight `experience`. The trace still shows **Moss · X.X ms** on a live query. **Switch to Agent B** is the existing handoff: `activate` on the source, write, `activate` on the destination.
 
 ## Film
 

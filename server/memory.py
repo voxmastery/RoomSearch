@@ -72,17 +72,39 @@ class MemoryStore:
             f"{agent['name']} searched “{query}” with {engine}. "
             f"Closest note: {lead_title or 'none'}."
         )
+        return self._experience(
+            agent_id,
+            content,
+            context="moss-search",
+            source_uri=f"roomsearch://{agent_id}/search",
+        )
+
+    def record_chat(self, agent_id: str, message: str, reply: str, mode: str) -> dict[str, Any]:
+        agent = AGENTS[agent_id]
+        engine = "Moss" if mode == "live" else "dev mock retrieval, not Moss"
+        content = (
+            f"{agent['name']} replied with {engine}. "
+            f"Asked: “{message}”. Reply: {reply}"
+        )
+        return self._experience(
+            agent_id,
+            content,
+            context="moss-chat",
+            source_uri=f"roomsearch://{agent_id}/chat",
+        )
+
+    def _experience(self, agent_id: str, content: str, *, context: str, source_uri: str) -> dict[str, Any]:
         with self._lock:
             brain = self.brains[agent_id]
             brain.turn_begin()
-            brain.wm_push(content, context="moss-search", salience=0.8)
+            brain.wm_push(content, context=context, salience=0.8)
             written = brain.experience(
                 content,
-                context="moss-search",
+                context=context,
                 salience=0.82,
                 agent_id=agent_id,
                 provenance_kind="tool_grounded",
-                source_uri=f"roomsearch://{agent_id}/search",
+                source_uri=source_uri,
                 verified=True,
                 confidence=0.9,
             )
@@ -92,8 +114,8 @@ class MemoryStore:
                 written,
                 agent_id=agent_id,
                 content=content,
-                context="moss-search",
-                source_uri=f"roomsearch://{agent_id}/search",
+                context=context,
+                source_uri=source_uri,
                 origin_agent=agent_id,
             )
             self.episodes.append(episode)

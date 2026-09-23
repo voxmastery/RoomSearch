@@ -103,11 +103,22 @@ export type SearchResponse = {
   observation: string
   episode: Episode
   memory: MemorySnapshot
+  reply?: string
+  message?: string
 }
 
 export type HandoffResponse = {
   handoff: Handoff
   memory: MemorySnapshot
+}
+
+export type NoteResponse = {
+  id: string
+  title: string
+  topic: string
+  docCount: number
+  index: string
+  mode: MossMode
 }
 
 export const AGENTS: Record<AgentId, { id: AgentId; name: string; role: string; initial: string }> = {

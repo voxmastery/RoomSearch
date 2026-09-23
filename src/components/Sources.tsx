@@ -1,3 +1,5 @@
+import { motion, useReducedMotion } from "framer-motion"
+import { FileText } from "lucide-react"
 import type { Hit } from "../types"
 
 const TOPIC_INK: Record<string, string> = {
@@ -12,10 +14,14 @@ const TOPIC_INK: Record<string, string> = {
 }
 
 export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
+  const reduce = useReducedMotion()
   if (hits.length === 0) {
     return (
       <section className="sources">
-        <h2 className="kicker">Sources</h2>
+        <div className="kicker-row">
+          <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
+          <h2 className="kicker">Sources</h2>
+        </div>
         <div className="empty-rail">No note in the room index scored against that question.</div>
       </section>
     )
@@ -23,12 +29,21 @@ export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
 
   return (
     <section className="sources">
-      <h2 className="kicker">Sources</h2>
+      <div className="kicker-row">
+        <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
+        <h2 className="kicker">Sources</h2>
+      </div>
       <div className="grid">
-        {hits.map((hit) => {
+        {hits.map((hit, indexInList) => {
           const color = TOPIC_INK[hit.topic] ?? "#3A3936"
           return (
-            <article className="source" key={hit.id}>
+            <motion.article
+              className="source"
+              key={hit.id}
+              initial={reduce ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.38, delay: reduce ? 0 : indexInList * 0.06, ease: [0.22, 1, 0.36, 1] }}
+            >
               <header>
                 <span className="badge" style={{ color, background: `${color}14` }}>
                   {hit.mark}
@@ -41,7 +56,7 @@ export function Sources({ hits, index }: { hits: Hit[]; index: string }) {
               <footer>
                 {hit.id} · {index}
               </footer>
-            </article>
+            </motion.article>
           )
         })}
       </div>

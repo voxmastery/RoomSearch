@@ -1,5 +1,7 @@
+import { motion, useReducedMotion } from "framer-motion"
 import type { Activated, AgentId, Episode, Handoff, MemorySnapshot } from "../types"
 import { AGENTS } from "../types"
+import { EpisodeSpark } from "./RoomArt"
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime()
@@ -18,7 +20,7 @@ function countLabel(count: number): string {
 }
 
 function shortId(id: string): string {
-  return id ? id.slice(0, 8) : "—"
+  return id ? id.slice(0, 8) : "\u2014"
 }
 
 export function Rail({
@@ -35,6 +37,10 @@ export function Rail({
 
   return (
     <aside className="rail" aria-label="Fluctlight memory">
+      <p className="rail-name">
+        <EpisodeSpark />
+        Fluctlight
+      </p>
       <section className="rail-block">
         <div className="rail-head">
           <h2 className="kicker">Episodes</h2>
@@ -96,9 +102,16 @@ function EpisodeCard({ episode }: { episode: Episode }) {
 function ActivatedCard({ card, fresh, delay }: { card: Activated; fresh: boolean; delay: number }) {
   const origin = AGENTS[card.originAgent as AgentId]
   const receiver = AGENTS[card.receivedBy as AgentId]
+  const reduce = useReducedMotion()
   return (
-    <article className={`episode ${fresh ? "fresh" : ""}`} style={fresh ? { animationDelay: `${delay}ms` } : undefined}>
+    <motion.article
+      className={`episode ${fresh ? "fresh" : ""}`}
+      initial={fresh && !reduce ? { opacity: 0, y: 8 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: reduce ? 0 : delay / 1000, ease: [0.22, 1, 0.36, 1] }}
+    >
       <div className="ep-top">
+        {fresh ? <EpisodeSpark /> : null}
         <span className="avatar">{receiver?.initial ?? "B"}</span>
         <strong>{receiver?.name ?? "Agent"}</strong>
         <time>handoff</time>
@@ -109,6 +122,6 @@ function ActivatedCard({ card, fresh, delay }: { card: Activated; fresh: boolean
         <br />
         {card.provenance.sourceUri || `engram ${shortId(card.engramId)}`}
       </div>
-    </article>
+    </motion.article>
   )
 }

@@ -67,7 +67,7 @@ Checks: `npm run build` and `.venv/bin/pytest`.
 
 ## Deploy
 
-Hosted URL: [https://roomsearch-3foy.onrender.com](https://roomsearch-3foy.onrender.com).
+Deployed: [https://roomsearch-3foy.onrender.com](https://roomsearch-3foy.onrender.com).
 
 `Dockerfile` builds the Vite app and serves it from the same FastAPI process. [`render.yaml`](render.yaml) is the Render blueprint (`healthCheckPath: /api/health`).
 
@@ -78,6 +78,10 @@ Hosted URL: [https://roomsearch-3foy.onrender.com](https://roomsearch-3foy.onren
 `GET /api/health` returns ok while the index warms. `GET /api/status` reports `moss.ready: true` when the badge can read **Moss live**.
 
 ## Architecture
+
+![RoomSearch architecture](docs/architecture.png)
+
+[Architecture diagram (SVG)](docs/architecture.svg)
 
 ```mermaid
 flowchart LR

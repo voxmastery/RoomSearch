@@ -1,0 +1,41 @@
+{
+  "measuredOn": "2026-09-23",
+  "index": "roomsearch-notes",
+  "model": "moss-minilm",
+  "docCount": 12,
+  "seedDocCount": 12,
+  "topK": 5,
+  "alpha": 0.75,
+  "n": 150,
+  "querySet": 24,
+  "warmupDiscarded": 1,
+  "warmupQuery": "lisbon dinner",
+  "call": "client.query(\"roomsearch-notes\", query, QueryOptions(top_k=5, alpha=0.75))",
+  "clock": "time.perf_counter around client.query only",
+  "hardware": {
+    "system": "Linux",
+    "release": "6.12.94+",
+    "machine": "x86_64",
+    "cpu": "Intel(R) Xeon(R) Processor",
+    "cpus": 4,
+    "memGb": 15.6
+  },
+  "wallClockMs": {
+    "p50": 4.01,
+    "p95": 5.63,
+    "p99": 5.86,
+    "mean": 3.88,
+    "min": 2.32,
+    "max": 5.88,
+    "under10msPct": 100.0
+  },
+  "engineMs": {
+    "p50": 0.0,
+    "p95": 1.0,
+    "p99": 1.0,
+    "mean": 0.17,
+    "min": 0.0,
+    "max": 1.0,
+    "under10msPct": 100.0
+  }
+}

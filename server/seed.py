@@ -38,7 +38,7 @@ SEED_DOCS: list[dict[str, str]] = [
         "topic": "Transit",
         "mark": "FY",
         "text": (
-            "The Lisbon river ferry runs from Cais do Sodr\u00e9 toward Cacilhas through "
+            "The Lisbon river ferry runs from Cais do Sodré toward Cacilhas through "
             "the evening. Sunday plan: late morning in Alfama, then the ferry as the "
             "bridge between lunch and the south-bank walk. Tickets are tap-on. The "
             "last useful boat for the group is 22:30 so nobody misses the Monday train."

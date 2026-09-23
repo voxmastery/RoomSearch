@@ -85,7 +85,7 @@ def _snippet(title: str, text: str) -> str:
     if len(body) <= 220:
         return body
     cut = body[:217].rsplit(" ", 1)[0]
-    return cut + "\u2026"
+    return cut + "…"
 
 
 def _tokens(text: str) -> list[str]:
@@ -236,7 +236,7 @@ class Retriever:
             alpha=ALPHA,
             hits=hits,
             doc_count=len(SEED_DOCS),
-            call="keyword overlap over seed notes \u2014 not MossClient.query",
+            call="keyword overlap over seed notes — not MossClient.query",
         )
 
     async def _live_query(self, query: str) -> RetrieveResult:

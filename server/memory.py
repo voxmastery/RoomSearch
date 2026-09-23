@@ -69,7 +69,7 @@ class MemoryStore:
         agent = AGENTS[agent_id]
         engine = "Moss" if mode == "live" else "dev mock retrieval, not Moss"
         content = (
-            f"{agent['name']} searched \u201c{query}\u201d with {engine}. "
+            f"{agent['name']} searched “{query}” with {engine}. "
             f"Closest note: {lead_title or 'none'}."
         )
         with self._lock:
